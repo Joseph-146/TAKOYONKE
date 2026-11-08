@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isOwner() { return signedIn() && request.auth.token.role == 'owner'; }
+    function isEmployee() { return signedIn() && request.auth.token.role == 'employee'; }
+
+    match /sales/{saleId} {
+      allow read: if isOwner() || (isEmployee() && resource.data.employeeUid == request.auth.uid);
+      allow create: if isEmployee()
+        && request.resource.data.employeeUid == request.auth.uid
+        && request.resource.data.keys().hasAll(['branchId', 'amount', 'employeeUid', 'clientCreatedAt'])
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= 0;
+      allow update, delete: if isOwner();
+    }
+
+    match /activityLogs/{logId} {
+      allow read: if isOwner() || (isEmployee() && resource.data.employeeUid == request.auth.uid);
+      allow create: if isEmployee()
+        && request.resource.data.employeeUid == request.auth.uid
+        && request.resource.data.keys().hasAll(['action', 'branchId', 'employeeUid', 'clientCreatedAt']);
+      allow update, delete: if isOwner();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isOwner() || (isEmployee() && resource.data.employeeUid == request.auth.uid);
+      allow create: if isEmployee() && request.resource.data.employeeUid == request.auth.uid;
+      allow update: if isOwner() || (isEmployee()
+        && resource.data.employeeUid == request.auth.uid
+        && request.resource.data.employeeUid == resource.data.employeeUid);
+      allow delete: if isOwner();
+    }
+
+    match /employees/{employeeId} {
+      allow read: if isOwner() || (signedIn() && request.auth.uid == employeeId);
+      allow create, update, delete: if isOwner();
+    }
+
+    match /branches/{branchId} {
+      allow read: if signedIn();
+      allow write: if isOwner();
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
